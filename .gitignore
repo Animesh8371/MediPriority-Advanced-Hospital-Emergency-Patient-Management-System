@@ -1,0 +1,7 @@
+build/
+*.exe
+*.o
+*.obj
+.env
+.vscode/ipch/
+*.log
