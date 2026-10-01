@@ -1,0 +1,112 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "CMake: Configure",
+            "type": "shell",
+            "command": "cmake",
+            "args": [
+                "-S",
+                "${workspaceFolder}/backend",
+                "-B",
+                "${workspaceFolder}/backend/build"
+            ],
+            "problemMatcher": [],
+            "group": "build"
+        },
+        {
+            "label": "CMake: Build server",
+            "type": "shell",
+            "command": "cmake",
+            "args": [
+                "--build",
+                "${workspaceFolder}/backend/build",
+                "--target",
+                "medipriority_server"
+            ],
+            "dependsOn": [
+                "CMake: Configure"
+            ],
+            "problemMatcher": [
+                "$gcc"
+            ],
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            }
+        },
+        {
+            "label": "CMake: Build C module + tests",
+            "type": "shell",
+            "command": "cmake",
+            "args": [
+                "--build",
+                "${workspaceFolder}/backend/build",
+                "--target",
+                "medialgo",
+                "test_heap",
+                "test_queue",
+                "test_hashtable",
+                "test_linkedlist",
+                "test_graph"
+            ],
+            "dependsOn": [
+                "CMake: Configure"
+            ],
+            "problemMatcher": [
+                "$gcc"
+            ],
+            "group": "build"
+        },
+        {
+            "label": "CTest: Run C module tests",
+            "type": "shell",
+            "command": "ctest",
+            "args": [
+                "--output-on-failure"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}/backend/build"
+            },
+            "dependsOn": [
+                "CMake: Build C module + tests"
+            ],
+            "problemMatcher": [],
+            "group": {
+                "kind": "test",
+                "isDefault": true
+            }
+        },
+        {
+            "label": "Run: medipriority_server",
+            "type": "shell",
+            "command": "${workspaceFolder}/backend/build/medipriority_server",
+            "windows": {
+                "command": "${workspaceFolder}\\backend\\build\\medipriority_server.exe"
+            },
+            "options": {
+                "cwd": "${workspaceFolder}/backend/build"
+            },
+            "dependsOn": [
+                "CMake: Build server"
+            ],
+            "problemMatcher": [],
+            "group": "none"
+        },
+        {
+            "label": "Frontend: Serve static files (port 5500)",
+            "type": "shell",
+            "command": "python",
+            "args": [
+                "-m",
+                "http.server",
+                "5500"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}/frontend"
+            },
+            "problemMatcher": [],
+            "group": "none"
+        }
+    ]
+}
