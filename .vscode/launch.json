@@ -1,0 +1,61 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Debug medipriority_server (Windows/MSYS2 GDB)",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}\\backend\\build\\medipriority_server.exe",
+            "args": [],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}\\backend\\build",
+            "environment": [
+                { "name": "MEDIPRIORITY_DB_HOST", "value": "127.0.0.1" },
+                { "name": "MEDIPRIORITY_DB_PORT", "value": "3306" },
+                { "name": "MEDIPRIORITY_DB_USER", "value": "root" },
+                { "name": "MEDIPRIORITY_DB_PASSWORD", "value": "your_password" },
+                { "name": "MEDIPRIORITY_DB_NAME", "value": "medipriority" },
+                { "name": "MEDIPRIORITY_API_PORT", "value": "8080" }
+            ],
+            "externalConsole": false,
+            "MIMode": "gdb",
+            "miDebuggerPath": "C:\\msys64\\ucrt64\\bin\\gdb.exe",
+            "preLaunchTask": "CMake: Build server"
+        },
+        {
+            "name": "Debug medipriority_server (Linux/macOS GDB)",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/backend/build/medipriority_server",
+            "args": [],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}/backend/build",
+            "environment": [
+                { "name": "MEDIPRIORITY_DB_HOST", "value": "127.0.0.1" },
+                { "name": "MEDIPRIORITY_DB_PORT", "value": "3306" },
+                { "name": "MEDIPRIORITY_DB_USER", "value": "root" },
+                { "name": "MEDIPRIORITY_DB_PASSWORD", "value": "your_password" },
+                { "name": "MEDIPRIORITY_DB_NAME", "value": "medipriority" },
+                { "name": "MEDIPRIORITY_API_PORT", "value": "8080" }
+            ],
+            "externalConsole": false,
+            "MIMode": "gdb",
+            "preLaunchTask": "CMake: Build server"
+        },
+        {
+            "name": "Debug test_heap (C module)",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/backend/build/test_heap",
+            "windows": {
+                "program": "${workspaceFolder}\\backend\\build\\test_heap.exe"
+            },
+            "args": [],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}/backend/build",
+            "externalConsole": false,
+            "MIMode": "gdb",
+            "preLaunchTask": "CMake: Build C module + tests"
+        }
+    ]
+}

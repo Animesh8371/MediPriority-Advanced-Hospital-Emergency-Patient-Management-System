@@ -1,0 +1,45 @@
+{
+    "folders": [
+        {
+            "name": "📁 medi-priority (root)",
+            "path": "."
+        },
+        {
+            "name": "🔵 C — algorithms (heap/queue/hash/list/graph)",
+            "path": "backend/c"
+        },
+        {
+            "name": "🟣 C++ — backend (models/services/repos/controllers)",
+            "path": "backend/cpp"
+        },
+        {
+            "name": "🗄️ Database (schema + seed SQL)",
+            "path": "database"
+        },
+        {
+            "name": "🌐 Frontend (HTML/CSS/JS)",
+            "path": "frontend"
+        },
+        {
+            "name": "📄 Docs",
+            "path": "docs"
+        }
+    ],
+    "settings": {
+        "cmake.sourceDirectory": "${workspaceFolder:📁 medi-priority (root)}/backend",
+        "cmake.buildDirectory": "${workspaceFolder:📁 medi-priority (root)}/backend/build",
+        "cmake.configureOnOpen": false,
+        "C_Cpp.default.cStandard": "c11",
+        "C_Cpp.default.cppStandard": "c++17"
+    },
+    "extensions": {
+        "recommendations": [
+            "ms-vscode.cpptools",
+            "ms-vscode.cmake-tools",
+            "ms-vscode.cpptools-extension-pack",
+            "mtxr.sqltools",
+            "mtxr.sqltools-driver-mysql",
+            "ritwickdey.liveserver"
+        ]
+    }
+}
