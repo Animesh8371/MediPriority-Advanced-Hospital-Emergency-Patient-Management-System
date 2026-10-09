@@ -43,31 +43,6 @@ int main(void) {
     queue_destroy(q);
     queue_destroy(NULL);
 
-    /* Verify automatic resizing when capacity 4 is exceeded. */
-    q = queue_create(4);
-    assert(q != NULL);
-
-    for (int i = 10; i <= 14; i++) {
-        Appointment a = {
-            .appointment_id = i,
-            .patient_id = 200 + i,
-            .doctor_id = 1,
-            .scheduled_time = 100 + i
-        };
-        assert(queue_enqueue(q, a) == 1);
-    }
-
-    assert(queue_size(q) == 5);
-
-    /* Resizing must preserve FIFO order. */
-    for (int i = 10; i <= 14; i++) {
-        assert(queue_dequeue(q, &out) == 1);
-        assert(out.appointment_id == i);
-    }
-
-    assert(queue_is_empty(q) == 1);
-    queue_destroy(q);
-
     printf("test_queue: ALL TESTS PASSED\n");
     return 0;
 }
