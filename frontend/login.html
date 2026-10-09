@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sign in - MediPriority</title>
+<link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+<div class="login-shell">
+  <div class="login-box">
+    <h1>MediPriority</h1>
+    <div class="sub">Hospital Emergency &amp; Patient Management &mdash; academic prototype</div>
+
+    <form id="loginForm">
+      <label for="username">Username</label>
+      <input type="text" id="username" required autocomplete="username">
+
+      <label for="password">Password</label>
+      <input type="password" id="password" required autocomplete="current-password">
+
+      <button type="submit" class="btn" style="width:100%">Sign in</button>
+    </form>
+    <div id="msg" class="message"></div>
+    <p class="note" style="margin-top:20px">
+      Seeded demo account &mdash; username <strong>admin</strong>, password <strong>Admin@123</strong>.
+      Change this after first login in any real deployment.
+    </p>
+  </div>
+</div>
+
+<script src="js/api.js"></script>
+<script>
+document.getElementById("loginForm").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const msg = document.getElementById("msg");
+    hideMessage(msg);
+
+    const username = document.getElementById("username").value.trim();
+    const password = document.getElementById("password").value;
+
+    try {
+        const result = await Api.post("/api/auth/login", { username, password });
+        Api.setSession(result.token, result.role, username);
+        window.location.href = "index.html";
+    } catch (err) {
+        showMessage(msg, err.message, "error");
+    }
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Appointments - MediPriority</title>
+<link rel="stylesheet" href="../css/styles.css">
+</head>
+<body>
+<div class="app-shell">
+  <div class="sidebar" id="sidebar"></div>
+  <div class="main">
+    <div class="page-header">
+      <h1>Appointments</h1>
+      <p>Normal (non-emergency) appointment scheduling, backed by a strict FIFO queue in C in addition to MySQL persistence &mdash; unlike emergency cases, appointments are never reprioritized.</p>
+    </div>
+
+    <div class="section card">
+      <h3>Book an appointment</h3>
+      <form id="bookForm">
+        <div class="grid-3">
+          <div><label for="patientId">Patient ID</label><input type="number" id="patientId" required></div>
+          <div><label for="doctorId">Doctor ID</label><input type="number" id="doctorId" required></div>
+          <div><label for="scheduledTime">Scheduled time (unix timestamp)</label><input type="number" id="scheduledTime" required></div>
+        </div>
+        <p class="note">Use a unix timestamp for the MVP demo (e.g. paste the output of <code>date +%s</code>, or any future integer). A friendlier date picker is a natural next iteration.</p>
+        <button type="submit" class="btn">Book</button>
+      </form>
+      <div id="bookMsg" class="message"></div>
+    </div>
+
+    <div class="section card">
+      <h3>Call next in line</h3>
+      <p style="margin-bottom:8px">Pulls the next appointment from the front of the C FIFO queue (booked-order, not priority-order).</p>
+      <button id="callNextBtn" class="btn">Call next</button>
+      <div id="callNextMsg" class="message"></div>
+      <div id="callNextResult" style="margin-top:12px"></div>
+    </div>
+
+    <div class="section card">
+      <h3>Upcoming appointments</h3>
+      <button id="refreshBtn" class="btn secondary">Refresh</button>
+      <div id="apptTable" style="margin-top:16px"></div>
+      <div id="listMsg" class="message"></div>
+    </div>
+  </div>
+</div>
+
+<script src="../js/api.js"></script>
+<script src="../js/nav.js"></script>
+<script>
+requireLogin();
+renderSidebar("pages/appointments.html");
+
+async function loadAppointments() {
+    const table = document.getElementById("apptTable");
+    const msg = document.getElementById("listMsg");
+    hideMessage(msg);
+    try {
+        const res = await Api.get("/api/appointments");
+        if (res.appointments.length === 0) { table.innerHTML = `<div class="empty-state">No upcoming appointments.</div>`; return; }
+        table.innerHTML = `<table><thead><tr><th>ID</th><th>Patient</th><th>Doctor</th><th>Scheduled time</th><th>Status</th><th>Action</th></tr></thead>
+        <tbody>${res.appointments.map(a => `<tr>
+            <td>${a.appointment_id}</td><td>${a.patient_id}</td><td>${a.doctor_id}</td><td>${a.scheduled_time}</td>
+            <td>${a.status}</td><td><button class="btn secondary" onclick="cancelAppt(${a.appointment_id})">Cancel</button></td>
+        </tr>`).join("")}</tbody></table>`;
+    } catch (err) { showMessage(msg, err.message, "error"); }
+}
+
+async function cancelAppt(id) {
+    try { await Api.post(`/api/appointments/${id}/cancel`, {}); loadAppointments(); }
+    catch (err) { showMessage(document.getElementById("listMsg"), err.message, "error"); }
+}
+
+document.getElementById("bookForm").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const msg = document.getElementById("bookMsg");
+    hideMessage(msg);
+    const payload = {
+        patient_id: parseInt(document.getElementById("patientId").value, 10),
+        doctor_id: parseInt(document.getElementById("doctorId").value, 10),
+        scheduled_time: parseInt(document.getElementById("scheduledTime").value, 10),
+    };
+    try {
+        const result = await Api.post("/api/appointments", payload);
+        showMessage(msg, `Appointment #${result.appointment_id} booked.`, "success");
+        document.getElementById("bookForm").reset();
+        loadAppointments();
+    } catch (err) { showMessage(msg, err.message, "error"); }
+});
+
+document.getElementById("callNextBtn").addEventListener("click", async () => {
+    const msg = document.getElementById("callNextMsg");
+    const result = document.getElementById("callNextResult");
+    hideMessage(msg); result.innerHTML = "";
+    try {
+        const res = await Api.post("/api/appointments/call-next", {});
+        if (res.success) {
+            const a = res.appointment;
+            result.innerHTML = `<table><tbody>
+                <tr><td>Appointment ID</td><td>${a.appointment_id}</td></tr>
+                <tr><td>Patient</td><td>${a.patient_id}</td></tr>
+                <tr><td>Doctor</td><td>${a.doctor_id}</td></tr>
+            </tbody></table>`;
+        } else {
+            showMessage(msg, res.message, "warning");
+        }
+    } catch (err) { showMessage(msg, err.message, "error"); }
+});
+
+document.getElementById("refreshBtn").addEventListener("click", loadAppointments);
+loadAppointments();
+</script>
+</body>
+</html>
