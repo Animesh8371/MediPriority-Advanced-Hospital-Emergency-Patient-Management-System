@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Beds &amp; ICU - MediPriority</title>
+<link rel="stylesheet" href="../css/styles.css">
+</head>
+<body>
+<div class="app-shell">
+  <div class="sidebar" id="sidebar"></div>
+  <div class="main">
+    <div class="page-header">
+      <div>
+        <div class="eyebrow">Resources</div>
+        <h1>Beds &amp; ICU</h1>
+        <p>Live ward map. Green beds are free, red are occupied &mdash; click a red bed to release it. Beds are normally filled automatically when a patient is admitted.</p>
+      </div>
+      <div class="actions"><a class="btn inline" href="patient-register.html">+ Admit patient</a></div>
+    </div>
+
+    <div class="row section" style="justify-content:space-between">
+      <div class="chips" id="filterChips">
+        <button type="button" class="chip-btn active" data-f="all">All</button>
+        <button type="button" class="chip-btn" data-f="free">Free</button>
+        <button type="button" class="chip-btn" data-f="occupied">Occupied</button>
+      </div>
+      <div class="legend"><span><i style="background:var(--ok-bg);border:1px solid var(--ok)"></i>Free</span><span><i style="background:var(--danger-bg);border:1px solid var(--danger)"></i>Occupied</span></div>
+    </div>
+
+    <div id="wards"><div class="skel" style="height:140px;margin-bottom:16px"></div><div class="skel" style="height:140px"></div></div>
+    <div id="listMsg" class="message"></div>
+
+    <details class="card section">
+      <summary>Manual tools &mdash; add a bed / allocate by hand</summary>
+      <div class="grid-2">
+        <div>
+          <h3>Add a bed</h3>
+          <div class="row"><select id="bedType" style="max-width:200px"><option>General</option><option>Emergency</option><option>ICU</option></select>
+          <button id="addBedBtn" class="btn inline" type="button">Add bed</button></div>
+          <div id="addMsg" class="message"></div>
+        </div>
+        <div>
+          <h3>Allocate a bed</h3>
+          <div class="grid-3">
+            <div><label for="bedId">Bed ID</label><input type="number" id="bedId"></div>
+            <div><label for="patientId">Patient ID</label><input type="number" id="patientId"></div>
+            <div><label for="doctorId">Doctor ID</label><input type="number" id="doctorId"></div>
+          </div>
+          <button id="allocateBtn" class="btn" type="button">Allocate</button>
+          <div id="allocateMsg" class="message"></div>
+        </div>
+      </div>
+    </details>
+  </div>
+</div>
+
+<script src="../js/api.js"></script>
+<script src="../js/nav.js"></script>
+<script>
+requireLogin();
+renderSidebar("pages/beds.html");
+
+const WARDS = [
+    ["ICU", "Intensive Care Unit", "var(--critical)"],
+    ["Emergency", "Emergency ward", "var(--high)"],
+    ["General", "General ward", "var(--brand)"],
+];
+let filter = "all";
+let beds = [];
+
+const whoOf = (b) => b.occupied_by_patient_id ? codeOf(b.occupied_by_patient_id) : "Occupied";
+const bedSvg = `<svg viewBox="0 0 24 24">${ICONS.bed}</svg>`;
+
+function render() {
+    const host = document.getElementById("wards");
+    if (!beds.length) { host.innerHTML = `<div class="card"><div class="empty-state">No beds yet. Use the manual tools below to add some, or run database/seed_reference.sql.</div></div>`; return; }
+
+    host.innerHTML = WARDS.map(([type, title, color]) => {
+        const list = beds.filter(b => b.bed_type === type);
+        if (!list.length) return "";
+        const occ = list.filter(b => b.occupied).length;
+        const pct = Math.round(occ / list.length * 100);
+        const tiles = list.map((b, i) => `
+            <div class="bed ${b.occupied ? "occupied" : "free"} ${type === "ICU" ? "icu" : ""} ${filter === "free" && b.occupied || filter === "occupied" && !b.occupied ? "hidden" : ""}"
+                 style="animation-delay:${i * 25}ms" data-bed="${b.bed_id}" data-occ="${b.occupied}"
+                 title="${b.occupied ? "Occupied by " + whoOf(b) + " - click to release" : "Free"}">
+                ${bedSvg}<div class="no">#${b.bed_id}</div>
+                <div class="who">${b.occupied ? esc(whoOf(b)) : "Free"}</div>
+            </div>`).join("");
+        return `<div class="ward"><div class="ward-head">
+            <div class="ring" style="--p:${pct};--c:${color}"><span>${pct}%</span></div>
+            <div><h2 style="margin:0">${title}</h2><div class="muted small">${occ} occupied &middot; ${list.length - occ} free &middot; ${list.length} total</div></div>
+        </div><div class="bed-grid">${tiles}</div></div>`;
+    }).join("");
+
+    host.querySelectorAll(".bed.occupied").forEach(el => el.addEventListener("click", () => confirmRelease(Number(el.dataset.bed))));
+}
+
+function confirmRelease(id) {
+    const bed = beds.find(b => b.bed_id === id);
+    const m = openModal(`
+        <div class="modal-head"><h2>Release bed #${id}?</h2><button class="modal-x" data-close>&times;</button></div>
+        <p>This frees the ${esc(bed.bed_type)} bed from <strong>${esc(whoOf(bed))}</strong> and gives that doctor one free patient slot back.</p>
+        <div class="row" style="margin-top:8px"><span class="spacer"></span>
+            <button class="btn secondary inline" data-close>Cancel</button>
+            <button class="btn danger inline" id="doRelease">Release bed</button></div>`);
+    m.el.querySelector("#doRelease").addEventListener("click", async () => {
+        try { await Api.post("/api/beds/release", { bed_id: id }); toast(`Bed #${id} released`, "success"); m.close(); loadBeds(); }
+        catch (err) { toast(err.message, "error"); }
+    });
+}
+
+async function loadBeds() {
+    const msg = document.getElementById("listMsg"); hideMessage(msg);
+    try { beds = (await Api.get("/api/beds")).beds; render(); }
+    catch (err) { document.getElementById("wards").innerHTML = ""; showMessage(msg, err.message, "error"); }
+}
+
+document.getElementById("filterChips").addEventListener("click", (e) => {
+    const b = e.target.closest(".chip-btn"); if (!b) return;
+    filter = b.dataset.f;
+    document.querySelectorAll("#filterChips .chip-btn").forEach(x => x.classList.toggle("active", x === b));
+    render();
+});
+
+document.getElementById("addBedBtn").addEventListener("click", async () => {
+    const msg = document.getElementById("addMsg"); hideMessage(msg);
+    try { const r = await Api.post("/api/beds", { bed_type: document.getElementById("bedType").value });
+          toast(`Bed #${r.bed_id} added`, "success"); loadBeds(); }
+    catch (err) { showMessage(msg, err.message, "error"); }
+});
+
+document.getElementById("allocateBtn").addEventListener("click", async () => {
+    const msg = document.getElementById("allocateMsg"); hideMessage(msg);
+    const payload = { bed_id: parseInt(document.getElementById("bedId").value, 10), patient_id: parseInt(document.getElementById("patientId").value, 10) };
+    const d = document.getElementById("doctorId").value; if (d) payload.doctor_id = parseInt(d, 10);
+    try { const r = await Api.post("/api/beds/allocate", payload); toast(r.message, "success"); loadBeds(); }
+    catch (err) { showMessage(msg, err.message, "error"); }
+});
+
+loadBeds();
+setInterval(loadBeds, 15000);   // keep the map live
+</script>
+</body>
+</html>

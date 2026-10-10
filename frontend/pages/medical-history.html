@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Medical History - MediPriority</title>
+<link rel="stylesheet" href="../css/styles.css">
+</head>
+<body>
+<div class="app-shell">
+  <div class="sidebar" id="sidebar"></div>
+  <div class="main">
+    <div class="page-header">
+      <h1>Medical History</h1>
+      <p>Simulated, non-authoritative history entries for an academic prototype &mdash; not a complete or clinically authoritative medical record.</p>
+    </div>
+
+    <div class="section card">
+      <h3>Add an entry</h3>
+      <form id="addForm">
+        <label for="patientId">Patient ID</label>
+        <input type="number" id="patientId" required>
+        <label for="diagnosis">Diagnosis</label>
+        <input type="text" id="diagnosis" required>
+        <label for="notes">Notes (optional)</label>
+        <textarea id="notes"></textarea>
+        <button type="submit" class="btn">Add entry</button>
+      </form>
+      <div id="addMsg" class="message"></div>
+    </div>
+
+    <div class="section card">
+      <h3>View history for a patient</h3>
+      <div class="grid-2">
+        <input type="number" id="viewPatientId" placeholder="Patient ID">
+        <button id="viewBtn" class="btn secondary">View history</button>
+      </div>
+      <div id="viewMsg" class="message"></div>
+      <div id="historyTable" style="margin-top:16px"></div>
+    </div>
+  </div>
+</div>
+
+<script src="../js/api.js"></script>
+<script src="../js/nav.js"></script>
+<script>
+requireLogin();
+renderSidebar("pages/medical-history.html");
+
+document.getElementById("addForm").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const msg = document.getElementById("addMsg");
+    hideMessage(msg);
+    const payload = {
+        patient_id: parseInt(document.getElementById("patientId").value, 10),
+        diagnosis: document.getElementById("diagnosis").value.trim(),
+        notes: document.getElementById("notes").value.trim(),
+    };
+    try {
+        const result = await Api.post("/api/medical-history", payload);
+        showMessage(msg, `Entry #${result.record_id} added.`, "success");
+        document.getElementById("addForm").reset();
+    } catch (err) { showMessage(msg, err.message, "error"); }
+});
+
+document.getElementById("viewBtn").addEventListener("click", async () => {
+    const msg = document.getElementById("viewMsg");
+    const table = document.getElementById("historyTable");
+    hideMessage(msg); table.innerHTML = "";
+    const id = document.getElementById("viewPatientId").value;
+    if (!id) { showMessage(msg, "Enter a patient ID.", "error"); return; }
+
+    try {
+        const res = await Api.get("/api/medical-history/" + id);
+        if (res.history.length === 0) { table.innerHTML = `<div class="empty-state">No history entries for this patient.</div>`; return; }
+        table.innerHTML = `<table><thead><tr><th>Date</th><th>Diagnosis</th><th>Notes</th></tr></thead>
+        <tbody>${res.history.map(h => {
+            const date = new Date(h.timestamp * 1000).toLocaleDateString();
+            return `<tr><td>${date}</td><td>${h.diagnosis}</td><td>${h.notes || "-"}</td></tr>`;
+        }).join("")}</tbody></table>`;
+    } catch (err) { showMessage(msg, err.message, "error"); }
+});
+</script>
+</body>
+</html>

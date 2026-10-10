@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Ambulances - MediPriority</title>
+<link rel="stylesheet" href="../css/styles.css">
+</head>
+<body>
+<div class="app-shell">
+  <div class="sidebar" id="sidebar"></div>
+  <div class="main">
+    <div class="page-header">
+      <h1>Ambulance Management</h1>
+      <p>Register ambulances and track availability. Simulated fleet for this academic prototype.</p>
+    </div>
+
+    <div class="section card">
+      <h3>Register an ambulance</h3>
+      <div class="grid-2">
+        <input type="text" id="vehicleNumber" placeholder="e.g. AMB-104" required>
+        <button id="addBtn" class="btn">Register</button>
+      </div>
+      <div id="addMsg" class="message"></div>
+    </div>
+
+    <div class="section card">
+      <h3>All ambulances</h3>
+      <button id="refreshBtn" class="btn secondary">Refresh</button>
+      <div id="ambTable" style="margin-top:16px"></div>
+      <div id="listMsg" class="message"></div>
+    </div>
+  </div>
+</div>
+
+<script src="../js/api.js"></script>
+<script src="../js/nav.js"></script>
+<script>
+requireLogin();
+renderSidebar("pages/ambulances.html");
+
+async function loadAmbulances() {
+    const table = document.getElementById("ambTable");
+    const msg = document.getElementById("listMsg");
+    hideMessage(msg);
+    try {
+        const res = await Api.get("/api/ambulances");
+        if (res.ambulances.length === 0) { table.innerHTML = `<div class="empty-state">No ambulances yet.</div>`; return; }
+        table.innerHTML = `<table><thead><tr><th>ID</th><th>Vehicle number</th><th>Status</th><th>Action</th></tr></thead>
+        <tbody>${res.ambulances.map(a => {
+            let badgeClass = a.status === "Available" ? "ok" : (a.status === "Assigned" ? "danger" : "moderate");
+            let action = a.status === "Available"
+                ? `<button class="btn secondary" onclick="assignAmb(${a.ambulance_id})">Assign</button>`
+                : (a.status === "Assigned" ? `<button class="btn secondary" onclick="releaseAmb(${a.ambulance_id})">Release</button>` : "-");
+            return `<tr><td>${a.ambulance_id}</td><td>${a.vehicle_number}</td>
+                <td><span class="badge ${badgeClass}">${a.status}</span></td><td>${action}</td></tr>`;
+        }).join("")}</tbody></table>`;
+    } catch (err) { showMessage(msg, err.message, "error"); }
+}
+
+async function assignAmb(id) {
+    try { await Api.post("/api/ambulances/assign", { ambulance_id: id }); loadAmbulances(); }
+    catch (err) { showMessage(document.getElementById("listMsg"), err.message, "error"); }
+}
+async function releaseAmb(id) {
+    try { await Api.post("/api/ambulances/release", { ambulance_id: id }); loadAmbulances(); }
+    catch (err) { showMessage(document.getElementById("listMsg"), err.message, "error"); }
+}
+
+document.getElementById("addBtn").addEventListener("click", async () => {
+    const msg = document.getElementById("addMsg");
+    hideMessage(msg);
+    const vehicleNumber = document.getElementById("vehicleNumber").value.trim();
+    if (!vehicleNumber) { showMessage(msg, "Enter a vehicle number.", "error"); return; }
+    try {
+        const result = await Api.post("/api/ambulances", { vehicle_number: vehicleNumber });
+        showMessage(msg, `Ambulance #${result.ambulance_id} registered.`, "success");
+        document.getElementById("vehicleNumber").value = "";
+        loadAmbulances();
+    } catch (err) { showMessage(msg, err.message, "error"); }
+});
+
+document.getElementById("refreshBtn").addEventListener("click", loadAmbulances);
+loadAmbulances();
+</script>
+</body>
+</html>
