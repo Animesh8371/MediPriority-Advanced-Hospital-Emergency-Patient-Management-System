@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Reports - MediPriority</title>
+<link rel="stylesheet" href="../css/styles.css">
+</head>
+<body>
+<div class="app-shell">
+  <div class="sidebar" id="sidebar"></div>
+  <div class="main">
+    <div class="page-header">
+      <h1>Reports</h1>
+      <p>Live summary pulled from MySQL. For a full breakdown by module, use the Dashboard; this page focuses on printable summary figures.</p>
+    </div>
+
+    <div class="section card">
+      <button id="refreshBtn" class="btn secondary">Refresh</button>
+      <button id="exportBtn" class="btn secondary">Export as CSV</button>
+      <div id="reportContent" style="margin-top:16px"></div>
+      <div id="msg" class="message"></div>
+    </div>
+  </div>
+</div>
+
+<script src="../js/api.js"></script>
+<script src="../js/nav.js"></script>
+<script>
+requireLogin();
+renderSidebar("pages/reports.html");
+
+async function loadReport() {
+    const content = document.getElementById("reportContent");
+    const msg = document.getElementById("msg");
+    hideMessage(msg);
+    try {
+        const res = await Api.get("/api/reports/summary");
+        const s = res.summary;
+        content.innerHTML = `<table><tbody>
+            <tr><td>Total patients</td><td>${s.total_patients}</td></tr>
+            <tr><td>Emergency cases waiting</td><td>${s.total_emergency_cases_waiting}</td></tr>
+            <tr><td>&nbsp;&nbsp;Critical</td><td>${s.priority_counts.critical}</td></tr>
+            <tr><td>&nbsp;&nbsp;High</td><td>${s.priority_counts.high}</td></tr>
+            <tr><td>&nbsp;&nbsp;Moderate</td><td>${s.priority_counts.moderate}</td></tr>
+            <tr><td>&nbsp;&nbsp;Low</td><td>${s.priority_counts.low}</td></tr>
+            <tr><td>Doctors (available / total)</td><td>${s.doctors.available} / ${s.doctors.total}</td></tr>
+            <tr><td>Beds (available / occupied)</td><td>${s.beds.available} / ${s.beds.occupied}</td></tr>
+            <tr><td>ICU beds (available / occupied)</td><td>${s.icu_beds.available} / ${s.icu_beds.occupied}</td></tr>
+            <tr><td>Ambulances (available / total)</td><td>${s.ambulances.available} / ${s.ambulances.total}</td></tr>
+            <tr><td>Upcoming appointments</td><td>${s.appointments.upcoming}</td></tr>
+        </tbody></table>`;
+    } catch (err) { showMessage(msg, err.message, "error"); }
+}
+
+document.getElementById("refreshBtn").addEventListener("click", loadReport);
+document.getElementById("exportBtn").addEventListener("click", async () => {
+    const msg = document.getElementById("msg");
+    try {
+        await Api.download("/api/reports/export.csv", "medipriority_report.csv");
+    } catch (err) { showMessage(msg, err.message, "error"); }
+});
+loadReport();
+</script>
+</body>
+</html>

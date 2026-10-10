@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Patient Search - MediPriority</title>
+<link rel="stylesheet" href="../css/styles.css">
+</head>
+<body>
+<div class="app-shell">
+  <div class="sidebar" id="sidebar"></div>
+  <div class="main">
+    <div class="page-header">
+      <h1>Patient Search &amp; Verification</h1>
+      <p>Search by name (fuzzy, MySQL-backed) or look up a returning patient directly by ID (served from the fast in-memory hash table cache when available, MySQL otherwise).</p>
+    </div>
+
+    <div class="section card">
+      <h3>Search by name</h3>
+      <div class="grid-2">
+        <input type="text" id="nameQuery" placeholder="e.g. Sharma">
+        <button id="searchBtn" class="btn">Search</button>
+      </div>
+      <div id="searchMsg" class="message"></div>
+      <div id="searchResults" style="margin-top:16px"></div>
+      <button id="exportSearchBtn" class="btn secondary" style="display:none">Export results as CSV</button>
+    </div>
+
+    <div class="section card">
+      <h3>Look up by Patient ID</h3>
+      <div class="grid-2">
+        <input type="number" id="idQuery" placeholder="e.g. 1">
+        <button id="lookupBtn" class="btn secondary">Look up</button>
+      </div>
+      <div id="lookupMsg" class="message"></div>
+      <div id="lookupResult" style="margin-top:16px"></div>
+    </div>
+  </div>
+</div>
+
+<script src="../js/api.js"></script>
+<script src="../js/nav.js"></script>
+<script>
+requireLogin();
+renderSidebar("pages/patient-search.html");
+
+function patientRow(p) {
+    return `<tr>
+        <td>${p.patient_id}</td><td>${p.name}</td><td>${p.age}</td><td>${p.gender}</td>
+        <td>${p.phone}</td><td>${p.blood_group}</td>
+    </tr>`;
+}
+function patientTable(list) {
+    if (list.length === 0) return `<div class="empty-state">No matching patients.</div>`;
+    return `<table><thead><tr><th>ID</th><th>Name</th><th>Age</th><th>Gender</th><th>Phone</th><th>Blood group</th></tr></thead>
+        <tbody>${list.map(patientRow).join("")}</tbody></table>`;
+}
+
+document.getElementById("searchBtn").addEventListener("click", async () => {
+    const msg = document.getElementById("searchMsg");
+    const results = document.getElementById("searchResults");
+    const exportBtn = document.getElementById("exportSearchBtn");
+    hideMessage(msg); results.innerHTML = ""; exportBtn.style.display = "none";
+    const q = document.getElementById("nameQuery").value.trim();
+    if (!q) { showMessage(msg, "Enter a name to search.", "error"); return; }
+
+    try {
+        const res = await Api.get("/api/patients/search?name=" + encodeURIComponent(q));
+        results.innerHTML = patientTable(res.patients);
+        if (res.patients && res.patients.length > 0) {
+            exportBtn.style.display = "inline-block";
+            exportBtn.onclick = () => downloadClientCsv("patients_" + q + ".csv", res.patients);
+        }
+    } catch (err) { showMessage(msg, err.message, "error"); }
+});
+
+document.getElementById("lookupBtn").addEventListener("click", async () => {
+    const msg = document.getElementById("lookupMsg");
+    const result = document.getElementById("lookupResult");
+    hideMessage(msg); result.innerHTML = "";
+    const id = document.getElementById("idQuery").value;
+    if (!id) { showMessage(msg, "Enter a patient ID.", "error"); return; }
+
+    try {
+        const res = await Api.get("/api/patients/" + id);
+        result.innerHTML = patientTable([res.patient]);
+    } catch (err) { showMessage(msg, err.message, "error"); }
+});
+</script>
+</body>
+</html>

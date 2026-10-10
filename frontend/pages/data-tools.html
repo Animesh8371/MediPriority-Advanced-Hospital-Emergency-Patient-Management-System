@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sample Data - MediPriority</title>
+<link rel="stylesheet" href="../css/styles.css">
+</head>
+<body>
+<div class="app-shell">
+  <div class="sidebar" id="sidebar"></div>
+  <div class="main">
+    <div class="page-header">
+      <div>
+        <div class="eyebrow">Insights</div>
+        <h1>Sample Data</h1>
+        <p>Fill the system with synthetic patients for demos, and browse the public reference data used by the registration form.</p>
+      </div>
+    </div>
+
+    <div class="card section">
+      <h3>Synthetic patient generator</h3>
+      <p>Each generated patient goes through the real admission pipeline: registered, queued by priority, then given a bed and doctor. Watch the beds and doctors fill up.</p>
+      <div class="row">
+        <div style="width:120px"><label for="count">How many</label><input type="number" id="count" min="1" max="50" value="10"></div>
+        <button class="btn inline" id="genBtn" style="margin-top:22px">Admit synthetic patients</button>
+        <button class="btn secondary inline" id="csvBtn" style="margin-top:22px">Download as CSV (no admit)</button>
+      </div>
+      <div class="meter" style="margin-top:16px;display:none" id="progWrap"><span id="prog"></span></div>
+      <div id="log" class="table-wrap" style="margin-top:14px"></div>
+      <p class="note">All names, ages and phone numbers are randomly generated and fictional. Phones use the 98765xxxxx pattern from seed.sql, so a number could coincide with a real one &mdash; do not contact them.</p>
+    </div>
+
+    <div class="grid-2 section">
+      <div class="card">
+        <h3>Emergency presentations (ICD-10)</h3>
+        <input type="text" id="icdQ" placeholder="Search code or name..." style="margin:8px 0 10px">
+        <div class="table-wrap" style="max-height:420px;overflow-y:auto"><table><thead><tr><th>ICD-10</th><th>Presentation</th><th>Sev.</th><th></th></tr></thead><tbody id="icdBody"></tbody></table></div>
+      </div>
+      <div>
+        <div class="card section">
+          <h3>Public emergency numbers (India)</h3>
+          <table><tbody id="numBody"></tbody></table>
+        </div>
+        <div class="card">
+          <h3>Official sources to verify against</h3>
+          <div id="srcList"></div>
+          <p class="note">This app cannot browse or download from government portals, and real patient records are private and are not published there. The reference lists were typed in from the public standards above, so check anything you plan to cite as &ldquo;verified&rdquo; against these sources first. Suggested severities are a simulated academic value, not clinical guidance.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="../js/api.js"></script>
+<script src="../js/nav.js"></script>
+<script src="../js/refdata.js"></script>
+<script>
+requireLogin();
+renderSidebar("pages/data-tools.html");
+const $ = (id) => document.getElementById(id);
+const SEV = ["", "critical", "high", "moderate", "low"], SEVL = ["", "Critical", "High", "Moderate", "Low"];
+
+function drawIcd() {
+    const q = $("icdQ").value.trim().toLowerCase();
+    $("icdBody").innerHTML = RefData.presentations
+        .filter(p => !q || (p.code + " " + p.label + " " + p.category).toLowerCase().includes(q))
+        .map(p => `<tr><td><strong>${esc(p.code)}</strong></td><td>${esc(p.label)}<div class="muted small">${esc(p.category)}</div></td>
+            <td><span class="badge ${SEV[p.severity]}">${SEVL[p.severity]}</span></td>
+            <td><a href="patient-register.html?code=${encodeURIComponent(p.code)}">Use &rarr;</a></td></tr>`).join("");
+}
+$("icdQ").addEventListener("input", drawIcd); drawIcd();
+$("numBody").innerHTML = RefData.emergencyNumbers.map(n => `<tr><td><strong style="font-size:1.1rem">${esc(n.number)}</strong></td><td>${esc(n.label)}</td></tr>`).join("");
+$("srcList").innerHTML = RefData.sources.map(s => `<div style="margin-bottom:10px"><a href="${esc(s.url)}" target="_blank" rel="noopener noreferrer"><strong>${esc(s.name)}</strong></a><div class="muted small">${esc(s.use)}</div></div>`).join("");
+
+function clampCount() { return Math.max(1, Math.min(50, parseInt($("count").value, 10) || 1)); }
+
+$("csvBtn").addEventListener("click", () => {
+    const rows = Array.from({ length: clampCount() }, () => { const s = Synthetic.admission(); const { _label, _code, ...rest } = s; return Object.assign({ icd10: _code, presentation: _label }, rest); });
+    downloadClientCsv("synthetic_patients.csv", rows);
+});
+
+$("genBtn").addEventListener("click", async () => {
+    const n = clampCount(), btn = $("genBtn");
+    btn.disabled = true; $("progWrap").style.display = "block";
+    const rows = []; let ok = 0, wait = 0, fail = 0;
+    for (let i = 0; i < n; i++) {
+        const s = Synthetic.admission(), { _label, _code, ...payload } = s;
+        try {
+            const r = await Api.post("/api/admissions", payload);
+            r.waitlisted ? wait++ : ok++;
+            rows.push(`<tr><td><strong>${esc(r.patient_code)}</strong></td><td>${esc(s.name)}</td><td>${esc(_label)}</td>
+                <td><span class="badge ${SEV[r.severity]}">${esc(r.severity_label)}</span></td>
+                <td>${r.bed ? esc(r.bed.bed_type) + " #" + r.bed.bed_id : '<span class="badge warn">Waitlisted</span>'}</td>
+                <td>${r.doctor ? esc(r.doctor.name) + ' <span class="muted small">(' + r.doctor.current_patients + "/" + r.doctor.max_patients + ")</span>" : "-"}</td></tr>`);
+        } catch (e) { fail++; rows.push(`<tr><td colspan="6" style="color:var(--danger)">${esc(s.name)}: ${esc(e.message)}</td></tr>`); }
+        $("prog").style.width = Math.round((i + 1) / n * 100) + "%";
+        $("log").innerHTML = `<table><thead><tr><th>ID</th><th>Name</th><th>Presentation</th><th>Priority</th><th>Bed</th><th>Doctor</th></tr></thead><tbody>${rows.join("")}</tbody></table>`;
+    }
+    btn.disabled = false;
+    toast(`${ok} admitted, ${wait} waitlisted${fail ? ", " + fail + " failed" : ""}`, fail ? "warning" : "success");
+});
+</script>
+</body>
+</html>

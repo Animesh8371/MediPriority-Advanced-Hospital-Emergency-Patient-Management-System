@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Analytics - MediPriority</title>
+<link rel="stylesheet" href="../css/styles.css">
+</head>
+<body>
+<div class="app-shell">
+  <div class="sidebar" id="sidebar"></div>
+  <div class="main">
+    <div class="page-header">
+      <h1>Analytics</h1>
+      <p>Trends, workload and wait times, all computed live from MySQL each time this page loads -- nothing here is pre-aggregated or cached. For a plain printable summary, see Reports.</p>
+    </div>
+
+    <div id="loadingMsg" class="loading">Loading analytics...</div>
+    <div id="errorMsg" class="message error"></div>
+
+    <div id="analyticsContent" style="display:none">
+
+      <div class="section">
+        <h2>Emergency arrivals - last 7 days</h2>
+        <div class="card">
+          <div id="arrivalsChart" class="bar-chart"></div>
+        </div>
+      </div>
+
+      <div class="grid-2">
+        <div class="section">
+          <h2>Bed occupancy by type</h2>
+          <div class="card" id="bedOccupancyCard"></div>
+        </div>
+
+        <div class="section">
+          <h2>Average wait time (waiting cases)</h2>
+          <div class="card" id="waitTimesCard"></div>
+        </div>
+      </div>
+
+      <div class="grid-2">
+        <div class="section">
+          <h2>Busiest doctors right now</h2>
+          <div class="card" id="doctorWorkloadCard"></div>
+        </div>
+
+        <div class="section">
+          <h2>Appointments breakdown</h2>
+          <div class="card" id="appointmentsCard"></div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<script src="../js/api.js"></script>
+<script src="../js/nav.js"></script>
+<script>
+requireLogin();
+renderSidebar("pages/analytics.html");
+
+/* ---- Tiny chart helpers: plain HTML/CSS bars, no SVG/canvas/library ---- */
+
+function verticalBarChart(items, valueFn, labelFn) {
+    const max = Math.max(1, ...items.map(valueFn));
+    return items.map(item => {
+        const value = valueFn(item);
+        const pct = Math.round((value / max) * 100);
+        return `<div class="bar-chart-col">
+            <div class="bar-chart-value">${value}</div>
+            <div class="bar-chart-bar" style="height:${Math.max(pct, value > 0 ? 4 : 0)}%"></div>
+            <div class="bar-chart-label">${labelFn(item)}</div>
+        </div>`;
+    }).join("");
+}
+
+function horizontalBar(label, value, max, colorClass, valueLabel) {
+    const pct = max > 0 ? Math.min(100, Math.round((value / max) * 100)) : 0;
+    return `<div class="hbar-row">
+        <div class="hbar-label">${label}</div>
+        <div class="hbar-track"><div class="hbar-fill ${colorClass}" style="width:${pct}%"></div></div>
+        <div class="hbar-value">${valueLabel}</div>
+    </div>`;
+}
+
+const SEVERITY_COLOR = { 1: "critical", 2: "high", 3: "moderate", 4: "low" };
+
+(async () => {
+    const loading = document.getElementById("loadingMsg");
+    const errorMsg = document.getElementById("errorMsg");
+    try {
+        const res = await Api.get("/api/reports/analytics");
+        const a = res.analytics;
+
+        // Emergency arrivals, last 7 days
+        document.getElementById("arrivalsChart").innerHTML = verticalBarChart(
+            a.daily_arrivals,
+            d => d.count,
+            d => d.date.slice(5) // "MM-DD"
+        );
+
+        // Bed occupancy by type
+        const bedTypeColor = { "General": "moderate", "Emergency": "high", "ICU": "critical" };
+        const bedRows = a.bed_occupancy_by_type.map(b =>
+            horizontalBar(b.bed_type, b.occupied, b.total, "hbar-" + (bedTypeColor[b.bed_type] || "moderate"),
+                b.occupied + " / " + b.total)
+        ).join("");
+        document.getElementById("bedOccupancyCard").innerHTML =
+            bedRows || `<div class="empty-state">No beds configured.</div>`;
+
+        // Average wait times by severity
+        const maxWait = Math.max(1, ...a.wait_times.map(w => w.avg_wait_minutes));
+        const waitRows = a.wait_times.map(w =>
+            horizontalBar(w.severity_label, w.avg_wait_minutes, maxWait, "hbar-" + SEVERITY_COLOR[w.severity],
+                w.waiting_count === 0 ? "none waiting" : w.avg_wait_minutes.toFixed(1) + " min (" + w.waiting_count + ")")
+        ).join("");
+        document.getElementById("waitTimesCard").innerHTML = waitRows;
+
+        // Busiest doctors
+        const workloadCard = document.getElementById("doctorWorkloadCard");
+        if (a.doctor_workload.length === 0) {
+            workloadCard.innerHTML = `<div class="empty-state">No doctors currently assigned to an active case.</div>`;
+        } else {
+            workloadCard.innerHTML = `<table><thead><tr><th>Doctor</th><th>Active cases</th></tr></thead><tbody>
+                ${a.doctor_workload.map(w => `<tr><td>${w.doctor_name}</td><td>${w.active_cases}</td></tr>`).join("")}
+            </tbody></table>`;
+        }
+
+        // Appointments breakdown
+        const apptTotal = a.appointments.scheduled + a.appointments.completed + a.appointments.cancelled;
+        document.getElementById("appointmentsCard").innerHTML = [
+            horizontalBar("Scheduled", a.appointments.scheduled, apptTotal, "hbar-moderate", String(a.appointments.scheduled)),
+            horizontalBar("Completed", a.appointments.completed, apptTotal, "hbar-low", String(a.appointments.completed)),
+            horizontalBar("Cancelled", a.appointments.cancelled, apptTotal, "hbar-critical", String(a.appointments.cancelled)),
+        ].join("");
+
+        loading.style.display = "none";
+        document.getElementById("analyticsContent").style.display = "block";
+    } catch (err) {
+        loading.style.display = "none";
+        showMessage(errorMsg, err.message, "error");
+    }
+})();
+</script>
+</body>
+</html>

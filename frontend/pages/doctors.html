@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Doctors - MediPriority</title>
+<link rel="stylesheet" href="../css/styles.css">
+</head>
+<body>
+<div class="app-shell">
+  <div class="sidebar" id="sidebar"></div>
+  <div class="main">
+    <div class="page-header">
+      <div>
+        <div class="eyebrow">Resources</div>
+        <h1>Doctors</h1>
+        <p>One doctor can look after several patients at once, up to their own limit. The bar shows current load; admissions go to the least-loaded matching specialist.</p>
+      </div>
+    </div>
+
+    <div class="stat-row" id="docStats"></div>
+
+    <div class="row section">
+      <input type="text" id="q" placeholder="Search name or specialization..." style="max-width:320px">
+      <select id="specFilter" style="max-width:240px"><option value="">All specializations</option></select>
+      <div class="chips" id="stateChips">
+        <button type="button" class="chip-btn active" data-f="all">All</button>
+        <button type="button" class="chip-btn" data-f="open">Has capacity</button>
+        <button type="button" class="chip-btn" data-f="full">At limit</button>
+        <button type="button" class="chip-btn" data-f="busy">Marked busy</button>
+      </div>
+    </div>
+
+    <div id="docGrid" class="doc-grid"><div class="skel" style="height:190px"></div><div class="skel" style="height:190px"></div><div class="skel" style="height:190px"></div></div>
+    <div id="listMsg" class="message"></div>
+
+    <details class="card section" style="margin-top:28px">
+      <summary>Add a doctor</summary>
+      <form id="addForm">
+        <div class="grid-4">
+          <div><label for="name">Name</label><input type="text" id="name" required></div>
+          <div><label for="age">Age</label><input type="number" id="age" min="1" max="100" required></div>
+          <div><label for="gender">Gender</label><select id="gender" required><option value="">Select...</option><option>Male</option><option>Female</option><option>Other</option></select></div>
+          <div><label for="maxPatients">Max patients at once</label><input type="number" id="maxPatients" min="1" max="50" value="5" required></div>
+        </div>
+        <label for="specialization">Specialization</label>
+        <input type="text" id="specialization" list="specList" required>
+        <datalist id="specList"></datalist>
+        <button type="submit" class="btn">Add doctor</button>
+      </form>
+      <div id="addMsg" class="message"></div>
+    </details>
+  </div>
+</div>
+
+<script src="../js/api.js"></script>
+<script src="../js/nav.js"></script>
+<script src="../js/refdata.js"></script>
+<script>
+requireLogin();
+renderSidebar("pages/doctors.html");
+
+let doctors = [], stateFilter = "all";
+RefData.departments.forEach(d => { const o = document.createElement("option"); o.value = d; document.getElementById("specList").appendChild(o); });
+
+function renderStats() {
+    const onDuty = doctors.filter(d => d.available).length;
+    const cap = doctors.reduce((s, d) => s + d.max_patients, 0);
+    const used = doctors.reduce((s, d) => s + d.current_patients, 0);
+    document.getElementById("docStats").innerHTML = `
+        <div class="stat t-blue"><div class="ico">${icon("users")}</div><div class="value">${doctors.length}</div><div class="label">Doctors</div></div>
+        <div class="stat t-green"><div class="ico">${icon("check")}</div><div class="value">${onDuty}</div><div class="label">On duty</div></div>
+        <div class="stat t-orange"><div class="ico">${icon("heart")}</div><div class="value">${used}</div><div class="label">Patients being handled</div></div>
+        <div class="stat"><div class="ico">${icon("activity")}</div><div class="value">${Math.max(cap - used, 0)}</div><div class="label">Free patient slots</div></div>`;
+}
+
+function render() {
+    const q = document.getElementById("q").value.trim().toLowerCase();
+    const spec = document.getElementById("specFilter").value;
+    const list = doctors.filter(d =>
+        (!q || (d.name + " " + d.specialization).toLowerCase().includes(q)) &&
+        (!spec || d.specialization === spec) &&
+        (stateFilter === "all" || (stateFilter === "open" && d.accepting) ||
+         (stateFilter === "full" && d.current_patients >= d.max_patients) || (stateFilter === "busy" && !d.available)));
+    const grid = document.getElementById("docGrid");
+    if (!list.length) { grid.innerHTML = `<div class="card" style="grid-column:1/-1"><div class="empty-state">No doctors match.</div></div>`; return; }
+
+    grid.innerHTML = list.map((d, i) => {
+        const pct = Math.min(100, Math.round(d.current_patients / d.max_patients * 100));
+        const cls = pct >= 100 ? "full" : pct >= 70 ? "mid" : "";
+        const badge = !d.available ? `<span class="badge danger"><span class="dot"></span>Busy</span>`
+                    : pct >= 100 ? `<span class="badge warn"><span class="dot"></span>At limit</span>`
+                    : `<span class="badge ok"><span class="dot"></span>Accepting</span>`;
+        return `<div class="doc-card" style="animation-delay:${i * 30}ms">
+            <div class="doc-top"><div class="avatar" style="${hueGradient(d.name)}">${esc(initialsOf(d.name))}</div>
+                <div style="min-width:0"><div class="doc-name">${esc(d.name)}</div><div class="doc-spec">${esc(d.specialization)}</div></div>
+                <span class="spacer"></span>${badge}</div>
+            <div class="doc-load"><span>Patient load</span><span><b>${d.current_patients}</b> / ${d.max_patients}</span></div>
+            <div class="meter ${cls}"><span data-w="${pct}"></span></div>
+            <div class="doc-actions">
+                <button class="btn secondary sm" onclick="showPatients(${d.doctor_id})">Patients (${d.current_patients})</button>
+                ${d.available ? `<button class="btn secondary sm" onclick="setDuty(${d.doctor_id}, false)">Mark busy</button>`
+                              : `<button class="btn secondary sm" onclick="setDuty(${d.doctor_id}, true)">Mark free</button>`}
+            </div></div>`;
+    }).join("");
+    requestAnimationFrame(() => grid.querySelectorAll(".meter > span").forEach(s => s.style.width = s.dataset.w + "%"));
+}
+
+async function loadDoctors() {
+    const msg = document.getElementById("listMsg"); hideMessage(msg);
+    try {
+        doctors = (await Api.get("/api/doctors")).doctors;
+        const sf = document.getElementById("specFilter"), cur = sf.value;
+        sf.innerHTML = `<option value="">All specializations</option>` +
+            [...new Set(doctors.map(d => d.specialization))].sort().map(s => `<option ${s === cur ? "selected" : ""}>${esc(s)}</option>`).join("");
+        renderStats(); render();
+    } catch (err) { document.getElementById("docGrid").innerHTML = ""; showMessage(msg, err.message, "error"); }
+}
+
+async function showPatients(id) {
+    const m = openModal(`<div class="modal-head"><h2>Loading...</h2><button class="modal-x" data-close>&times;</button></div><div class="skel" style="height:90px"></div>`, { wide: true });
+    try {
+        const r = await Api.get(`/api/doctors/${id}/patients`);
+        const rows = r.patients.length ? `<div class="table-wrap"><table><thead><tr><th>Patient</th><th>Name</th><th>Bed</th><th>Since</th></tr></thead><tbody>
+            ${r.patients.map(p => `<tr><td><strong>${esc(codeOf(p.patient_id))}</strong></td><td>${esc(p.patient_name)}</td>
+            <td>${p.bed_id ? esc(p.bed_type) + " #" + p.bed_id : "-"}</td><td class="muted small">${esc(p.assigned_at)}</td></tr>`).join("")}</tbody></table></div>`
+            : `<div class="empty-state">No patients assigned right now.</div>`;
+        m.el.innerHTML = `<div class="modal-head"><div class="avatar" style="${hueGradient(r.doctor.name)}">${esc(initialsOf(r.doctor.name))}</div>
+            <div><h2>${esc(r.doctor.name)}</h2><div class="muted small">${esc(r.doctor.specialization)} &middot; ${r.doctor.current_patients}/${r.doctor.max_patients} patients</div></div>
+            <button class="modal-x" data-close>&times;</button></div>${rows}`;
+        m.el.querySelectorAll("[data-close]").forEach(b => b.addEventListener("click", m.close));
+    } catch (err) { m.close(); toast(err.message, "error"); }
+}
+
+async function setDuty(id, free) {
+    try { await Api.post(`/api/doctors/${id}/${free ? "release" : "assign"}`, {}); toast(free ? "Doctor marked free" : "Doctor marked busy - skipped by auto-allocation", "success"); loadDoctors(); }
+    catch (err) { toast(err.message, "error"); }
+}
+
+["q", "specFilter"].forEach(id => document.getElementById(id).addEventListener("input", render));
+document.getElementById("stateChips").addEventListener("click", (e) => {
+    const b = e.target.closest(".chip-btn"); if (!b) return;
+    stateFilter = b.dataset.f;
+    document.querySelectorAll("#stateChips .chip-btn").forEach(x => x.classList.toggle("active", x === b));
+    render();
+});
+
+document.getElementById("addForm").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const msg = document.getElementById("addMsg"); hideMessage(msg);
+    const payload = {
+        name: document.getElementById("name").value.trim(), age: parseInt(document.getElementById("age").value, 10),
+        gender: document.getElementById("gender").value, specialization: document.getElementById("specialization").value.trim(),
+        max_patients: parseInt(document.getElementById("maxPatients").value, 10),
+    };
+    try { await Api.post("/api/doctors", payload); toast("Doctor added", "success"); document.getElementById("addForm").reset(); document.getElementById("maxPatients").value = 5; loadDoctors(); }
+    catch (err) { showMessage(msg, err.message, "error"); }
+});
+
+loadDoctors();
+setInterval(loadDoctors, 20000);
+</script>
+</body>
+</html>

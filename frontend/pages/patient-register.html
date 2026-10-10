@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Register &amp; Admit - MediPriority</title>
+<link rel="stylesheet" href="../css/styles.css">
+</head>
+<body>
+<div class="app-shell">
+  <div class="sidebar" id="sidebar"></div>
+  <div class="main">
+    <div class="page-header">
+      <div>
+        <div class="eyebrow">Patient flow</div>
+        <h1>Register &amp; Admit</h1>
+        <p>One step registers the patient, joins the priority queue, and allocates a bed and a doctor based on how critical the case is.</p>
+      </div>
+      <div class="actions">
+        <button type="button" id="fillBtn" class="btn secondary inline">&#127922; Fill sample patient</button>
+      </div>
+    </div>
+
+    <div class="steps">
+      <div class="step-pill active" id="st1"><span class="num">1</span>Patient details</div>
+      <div class="step-pill" id="st2"><span class="num">2</span>Clinical assessment</div>
+      <div class="step-pill" id="st3"><span class="num">3</span>Bed &amp; doctor allocated</div>
+    </div>
+
+    <form id="regForm" novalidate>
+    <div class="split">
+      <div>
+        <div class="card section">
+          <h3>1 &middot; Patient details</h3>
+          <div class="grid-2">
+            <div>
+              <label for="name">Full name</label>
+              <input type="text" id="name" autocomplete="off" placeholder="e.g. Aditi Sharma">
+              <div class="field-err" id="e_name"></div>
+            </div>
+            <div>
+              <label for="age">Age</label>
+              <input type="number" id="age" min="1" max="130">
+              <div class="field-err" id="e_age"></div>
+            </div>
+          </div>
+          <div class="grid-3">
+            <div>
+              <label for="gender">Gender</label>
+              <select id="gender"><option value="">Select...</option><option>Male</option><option>Female</option><option>Other</option></select>
+              <div class="field-err" id="e_gender"></div>
+            </div>
+            <div>
+              <label for="bloodGroup">Blood group</label>
+              <select id="bloodGroup"><option>Unknown</option><option>A+</option><option>A-</option><option>B+</option><option>B-</option><option>AB+</option><option>AB-</option><option>O+</option><option>O-</option></select>
+            </div>
+            <div>
+              <label for="dob">Date of birth (optional)</label>
+              <input type="date" id="dob">
+            </div>
+          </div>
+          <div class="grid-2">
+            <div>
+              <label for="phone">Phone number</label>
+              <input type="text" id="phone" inputmode="numeric" placeholder="e.g. 9876543210">
+              <div class="field-err" id="e_phone"></div>
+            </div>
+            <div>
+              <label for="emergencyContact">Emergency contact (optional)</label>
+              <input type="text" id="emergencyContact" inputmode="numeric">
+            </div>
+          </div>
+        </div>
+
+        <div class="card section">
+          <h3>2 &middot; Clinical assessment</h3>
+          <label for="presentation">Presenting problem <span class="muted">(ICD-10 reference, pre-fills category &amp; suggested severity)</span></label>
+          <select id="presentation"><option value="">Choose a common emergency presentation...</option></select>
+
+          <label style="margin-top:16px">How critical is the patient? <span class="muted">(decides the ward)</span></label>
+          <div class="sev-grid" id="sevGrid">
+            <div class="sev-card" data-sev="1"><div class="n">1</div><div class="t">Critical</div><div class="d">&rarr; ICU</div></div>
+            <div class="sev-card" data-sev="2"><div class="n">2</div><div class="t">High</div><div class="d">&rarr; Emergency</div></div>
+            <div class="sev-card selected" data-sev="3"><div class="n">3</div><div class="t">Moderate</div><div class="d">&rarr; General</div></div>
+            <div class="sev-card" data-sev="4"><div class="n">4</div><div class="t">Low</div><div class="d">&rarr; General</div></div>
+          </div>
+
+          <label for="category">Category <span class="muted">(used to match the doctor's specialty)</span></label>
+          <input type="text" id="category" list="catList" placeholder="e.g. Cardiac, Trauma, Respiratory">
+          <datalist id="catList"></datalist>
+          <div class="field-err" id="e_category"></div>
+
+          <button type="submit" class="btn" id="submitBtn">Register &amp; allocate bed + doctor</button>
+          <div id="msg" class="message"></div>
+          <p class="note">Severity is a simulated academic score, not real clinical triage. A bed type is chosen from severity; the doctor is the least-loaded one with matching specialty who still has free capacity.</p>
+        </div>
+      </div>
+
+      <div class="sticky">
+        <div class="alloc-panel">
+          <h3>Live allocation preview</h3>
+          <div class="muted small">What would happen if you admitted this patient right now. Nothing is saved until you submit.</div>
+          <div id="preview"><div class="alloc-tile"><div class="s">Pick a severity to see the plan&hellip;</div></div></div>
+        </div>
+      </div>
+    </div>
+    </form>
+  </div>
+</div>
+
+<script src="../js/api.js"></script>
+<script src="../js/nav.js"></script>
+<script src="../js/refdata.js"></script>
+<script>
+requireLogin();
+renderSidebar("pages/patient-register.html");
+
+const $ = (id) => document.getElementById(id);
+let severity = 3;
+
+/* ---------- populate presentations + category suggestions ---------- */
+const sel = $("presentation");
+RefData.presentations.forEach(p => {
+    const o = document.createElement("option");
+    o.value = p.code; o.textContent = `${p.code} - ${p.label}`;
+    sel.appendChild(o);
+});
+[...new Set(RefData.presentations.map(p => p.category))].forEach(c => {
+    const o = document.createElement("option"); o.value = c; $("catList").appendChild(o);
+});
+
+function setSeverity(n) {
+    severity = n;
+    document.querySelectorAll(".sev-card").forEach(c => c.classList.toggle("selected", Number(c.dataset.sev) === n));
+    schedulePreview();
+}
+document.querySelectorAll(".sev-card").forEach(c => c.addEventListener("click", () => setSeverity(Number(c.dataset.sev))));
+
+sel.addEventListener("change", () => {
+    const p = RefData.findPresentation(sel.value);
+    if (!p) return;
+    $("category").value = p.category;
+    setSeverity(p.severity);
+    toast(`Suggested: ${p.category}, severity ${p.severity} (${["", "Critical", "High", "Moderate", "Low"][p.severity]})`, "info", 2600);
+});
+$("category").addEventListener("input", schedulePreview);
+
+/* ---------- live allocation preview (read-only API call) ---------- */
+let previewTimer = null;
+function schedulePreview() { clearTimeout(previewTimer); previewTimer = setTimeout(loadPreview, 250); }
+
+async function loadPreview() {
+    const box = $("preview");
+    try {
+        const cat = $("category").value.trim();
+        const r = await Api.get(`/api/admissions/preview?severity=${severity}&category=${encodeURIComponent(cat)}`);
+        const chain = r.bed_preference.map((b, i) => `<span class="chip ${i === 0 ? "first" : ""}">${esc(b)}</span>`).join("");
+        let bedTile, docTile;
+
+        if (r.bed) {
+            const fallback = r.bed.bed_type !== r.bed_preference[0];
+            bedTile = `<div class="alloc-tile"><div class="k">Ward</div><div class="v">${esc(r.bed.bed_type)} bed</div>
+                <div class="s">${r.bed.free} free${fallback ? " &middot; first-choice ward is full, using fallback" : ""}</div>
+                <div class="alloc-chain">${chain}</div></div>`;
+        } else {
+            bedTile = `<div class="alloc-tile"><div class="k">Ward</div><div class="v" style="color:#fcd34d">No bed free</div>
+                <div class="s">Patient would be queued by priority and waitlisted.</div><div class="alloc-chain">${chain}</div></div>`;
+        }
+
+        if (r.doctor) {
+            const d = r.doctor, pct = Math.round((d.current_patients + 1) / d.max_patients * 100);
+            docTile = `<div class="alloc-tile"><div class="k">Doctor</div><div class="v">Dr. ${esc(d.name.replace(/^Dr\.?\s*/i, ""))}</div>
+                <div class="s">${esc(d.specialization)} &middot; will hold ${d.current_patients + 1} of ${d.max_patients} patients</div>
+                <div class="meter ${pct >= 100 ? "full" : pct >= 70 ? "mid" : ""}" style="margin-top:8px"><span style="width:${pct}%"></span></div></div>`;
+        } else {
+            docTile = `<div class="alloc-tile"><div class="k">Doctor</div><div class="v" style="color:#fcd34d">None with free capacity</div>
+                <div class="s">Every on-duty doctor is at their patient limit.</div></div>`;
+        }
+        box.innerHTML = bedTile + docTile;
+    } catch (err) {
+        box.innerHTML = `<div class="alloc-tile"><div class="s">Preview unavailable: ${esc(err.message)}</div></div>`;
+    }
+}
+
+/* ---------- sample patient ---------- */
+$("fillBtn").addEventListener("click", () => {
+    const s = Synthetic.admission();
+    $("name").value = s.name; $("age").value = s.age; $("gender").value = s.gender;
+    $("bloodGroup").value = s.blood_group; $("phone").value = s.phone;
+    $("emergencyContact").value = s.emergency_contact; $("dob").value = s.date_of_birth;
+    sel.value = s._code; $("category").value = s.category;
+    setSeverity(s.severity);
+    toast("Synthetic patient filled in - fictional data for demos only.", "info", 2800);
+});
+
+/* ---------- validation (mirrors the server rules so errors show instantly) ---------- */
+function validate() {
+    const errs = {};
+    const name = $("name").value.trim(), age = parseInt($("age").value, 10), phone = $("phone").value.trim();
+    if (!name || name.length > 100 || !/^[A-Za-z .\-]+$/.test(name)) errs.name = "Letters, spaces, . and - only";
+    if (!(age >= 1 && age <= 130)) errs.age = "Enter an age from 1 to 130";
+    if (!$("gender").value) errs.gender = "Select a gender";
+    if (!/^[0-9+]{7,15}$/.test(phone)) errs.phone = "7-15 digits";
+    if (!$("category").value.trim()) errs.category = "Category is required";
+    ["name", "age", "gender", "phone", "category"].forEach(k => {
+        $("e_" + k).textContent = errs[k] || "";
+        const input = $(k === "category" ? "category" : k);
+        input.classList.toggle("invalid", !!errs[k]);
+    });
+    return Object.keys(errs).length === 0;
+}
+
+/* ---------- submit ---------- */
+let lastCaseId = null;
+$("regForm").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const msg = $("msg"); hideMessage(msg);
+    if (!validate()) { toast("Please fix the highlighted fields.", "warning"); return; }
+
+    const payload = {
+        name: $("name").value.trim(), age: parseInt($("age").value, 10), gender: $("gender").value,
+        phone: $("phone").value.trim(), blood_group: $("bloodGroup").value,
+        emergency_contact: $("emergencyContact").value.trim(), date_of_birth: $("dob").value,
+        severity, category: $("category").value.trim(),
+    };
+
+    const btn = $("submitBtn");
+    btn.disabled = true; btn.innerHTML = `<span class="spin"></span> Allocating...`;
+    try {
+        const r = await Api.post("/api/admissions", payload);
+        $("st1").className = "step-pill done"; $("st2").className = "step-pill done"; $("st3").className = "step-pill done active";
+        showResult(r);
+        $("regForm").reset(); setSeverity(3); loadPreview();
+    } catch (err) {
+        showMessage(msg, err.message, "error");
+    } finally {
+        btn.disabled = false; btn.textContent = "Register & allocate bed + doctor";
+    }
+});
+
+function showResult(r) {
+    lastCaseId = r.case_id;
+    const waitlisted = !!r.waitlisted;
+    const sevCls = ["", "critical", "high", "moderate", "low"][r.severity];
+    const bedTile = r.bed
+        ? `<div class="result-tile"><div class="k">Bed</div><div class="v">${esc(r.bed.bed_type)} #${r.bed.bed_id}</div></div>`
+        : `<div class="result-tile"><div class="k">Bed</div><div class="v" style="color:var(--warn)">Waitlisted</div><div class="small muted">Queued by priority</div></div>`;
+    const docTile = r.doctor
+        ? `<div class="result-tile"><div class="k">Doctor</div><div class="v">Dr. ${esc(r.doctor.name.replace(/^Dr\.?\s*/i, ""))}</div>
+              <div class="small muted">${esc(r.doctor.specialization)} &middot; ${r.doctor.current_patients}/${r.doctor.max_patients} patients</div></div>`
+        : `<div class="result-tile"><div class="k">Doctor</div><div class="v" style="color:var(--warn)">Not assigned</div><div class="small muted">No free capacity</div></div>`;
+
+    const m = openModal(`
+        <div class="modal-head">
+            <div class="check-pop ${waitlisted || !r.doctor ? "warn" : ""}"><svg class="ic" viewBox="0 0 24 24" style="width:28px;height:28px">${waitlisted || !r.doctor ? ICONS.alert : ICONS.check}</svg></div>
+            <div><h2>${waitlisted ? "Registered - waitlisted" : "Patient admitted"}</h2><div class="muted small">${esc(r.message)}</div></div>
+            <button class="modal-x" data-close aria-label="Close">&times;</button>
+        </div>
+        <div class="ticket">
+            <div class="k">Unique patient ID (primary key)</div>
+            <div class="id">${esc(r.patient_code)}</div>
+            <div class="sub">Database id ${r.patient_id} &middot; Case #${r.case_id} &middot; <span class="badge ${sevCls}" style="background:rgba(255,255,255,.2);color:#fff">${esc(r.severity_label)}</span></div>
+        </div>
+        <div class="result-grid">${bedTile}${docTile}</div>
+        ${r.duplicate_warning ? `<div class="message warning show">A patient with the same name and phone already exists - verify this is not a duplicate.</div>` : ""}
+        <div class="row" style="margin-top:18px">
+            ${waitlisted ? `<button class="btn secondary inline" id="retryBtn">Retry allocation</button>` : ""}
+            <a class="btn secondary inline" href="beds.html">View bed map</a>
+            <a class="btn secondary inline" href="doctors.html">View doctors</a>
+            <span class="spacer"></span>
+            <button class="btn inline" data-close>Done</button>
+        </div>`, { onClose: () => { $("st1").className = "step-pill active"; $("st2").className = "step-pill"; $("st3").className = "step-pill"; } });
+
+    const retry = m.el.querySelector("#retryBtn");
+    if (retry) retry.addEventListener("click", async () => {
+        retry.disabled = true;
+        try {
+            const rr = await Api.post(`/api/admissions/${lastCaseId}/allocate`, {});
+            toast(rr.message, rr.bed ? "success" : "warning");
+            if (rr.bed) m.close();
+        } catch (err) { toast(err.message, "error"); retry.disabled = false; }
+    });
+
+    toast(`${r.patient_code} registered`, waitlisted ? "warning" : "success");
+}
+
+loadPreview();
+
+/* deep link from the Sample Data page: patient-register.html?code=I21 */
+const deep = new URLSearchParams(location.search).get("code");
+if (deep && RefData.findPresentation(deep)) { sel.value = deep; sel.dispatchEvent(new Event("change")); }
+</script>
+</body>
+</html>

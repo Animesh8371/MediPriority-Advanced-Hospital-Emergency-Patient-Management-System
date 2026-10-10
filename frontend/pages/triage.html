@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Emergency Triage - MediPriority</title>
+<link rel="stylesheet" href="../css/styles.css">
+</head>
+<body>
+<div class="app-shell">
+  <div class="sidebar" id="sidebar"></div>
+  <div class="main">
+    <div class="page-header">
+      <h1>Emergency Triage</h1>
+      <p>Rule-based, simulated prioritization for this academic prototype &mdash; not a real medical diagnosis or clinical triage tool. Cases are prioritized by severity, then by whoever arrived first within the same severity.</p>
+    </div>
+
+    <div class="section card">
+      <h3>Admit a new emergency case</h3>
+      <form id="admitForm">
+        <div class="grid-3">
+          <div>
+            <label for="patientId">Patient ID</label>
+            <input type="number" id="patientId" required>
+          </div>
+          <div>
+            <label for="severity">Severity</label>
+            <select id="severity" required>
+              <option value="1">1 - Critical</option>
+              <option value="2">2 - High</option>
+              <option value="3" selected>3 - Moderate</option>
+              <option value="4">4 - Low</option>
+            </select>
+          </div>
+          <div>
+            <label for="category">Category</label>
+            <input type="text" id="category" placeholder="e.g. Cardiac, Trauma" required>
+          </div>
+        </div>
+        <button type="submit" class="btn">Admit case</button>
+      </form>
+      <div id="admitMsg" class="message"></div>
+    </div>
+
+    <div class="section card">
+      <h3>Priority queue</h3>
+      <p style="margin-bottom:8px">Live view of the C min-heap: the most urgent waiting case is always shown first.</p>
+      <div id="queueInfo"></div>
+      <button id="refreshBtn" class="btn secondary">Refresh</button>
+      <button id="nextBtn" class="btn">Move next case to In Treatment</button>
+      <div id="queueMsg" class="message"></div>
+    </div>
+  </div>
+</div>
+
+<script src="../js/api.js"></script>
+<script src="../js/nav.js"></script>
+<script>
+requireLogin();
+renderSidebar("pages/triage.html");
+
+function badgeFor(label) {
+    const cls = label.toLowerCase();
+    return `<span class="badge ${cls}">${label}</span>`;
+}
+
+async function loadQueue() {
+    const info = document.getElementById("queueInfo");
+    const msg = document.getElementById("queueMsg");
+    hideMessage(msg);
+    try {
+        const res = await Api.get("/api/emergency-cases/priority-queue");
+        if (!res.next_case) {
+            info.innerHTML = `<div class="empty-state">No emergency cases waiting (queue is empty).</div>`;
+        } else {
+            const c = res.next_case;
+            info.innerHTML = `<table><tbody>
+                <tr><td>Waiting cases</td><td>${res.waiting_count}</td></tr>
+                <tr><td>Next case</td><td>#${c.case_id} &mdash; Patient ${c.patient_id} &mdash; ${badgeFor(c.severity_label)}</td></tr>
+            </tbody></table>`;
+        }
+    } catch (err) { showMessage(msg, err.message, "error"); }
+}
+
+document.getElementById("admitForm").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const msg = document.getElementById("admitMsg");
+    hideMessage(msg);
+    const payload = {
+        patient_id: parseInt(document.getElementById("patientId").value, 10),
+        severity: parseInt(document.getElementById("severity").value, 10),
+        category: document.getElementById("category").value.trim(),
+    };
+    try {
+        const result = await Api.post("/api/emergency-cases", payload);
+        showMessage(msg, `Case #${result.case_id} admitted. ${result.message}`, "success");
+        document.getElementById("admitForm").reset();
+        loadQueue();
+    } catch (err) { showMessage(msg, err.message, "error"); }
+});
+
+document.getElementById("refreshBtn").addEventListener("click", loadQueue);
+
+document.getElementById("nextBtn").addEventListener("click", async () => {
+    const msg = document.getElementById("queueMsg");
+    hideMessage(msg);
+    try {
+        const result = await Api.post("/api/triage/prioritize", {});
+        showMessage(msg, result.message, "success");
+        loadQueue();
+    } catch (err) { showMessage(msg, err.message, "error"); }
+});
+
+loadQueue();
+</script>
+</body>
+</html>

@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dashboard - MediPriority</title>
+<link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+<div class="app-shell">
+  <div class="sidebar" id="sidebar"></div>
+  <div class="main">
+    <div class="page-header">
+      <div>
+        <div class="eyebrow" id="today"></div>
+        <h1>Hospital overview</h1>
+        <p>Live counts from MySQL, refreshed every 15 seconds. Simulated academic dataset, not real hospital statistics.</p>
+      </div>
+      <div class="actions"><a class="btn inline" href="pages/patient-register.html">+ Register &amp; admit patient</a></div>
+    </div>
+
+    <div id="errorMsg" class="message error"></div>
+
+    <div class="stat-row" id="stats">
+      <div class="skel" style="height:112px"></div><div class="skel" style="height:112px"></div><div class="skel" style="height:112px"></div><div class="skel" style="height:112px"></div>
+    </div>
+
+    <div class="split">
+      <div>
+        <div class="card section">
+          <h3>Waiting emergency cases by priority</h3>
+          <div id="priorityBars" style="margin-top:14px"></div>
+        </div>
+        <div class="card section">
+          <div class="row"><h3 style="margin:0">Doctor workload</h3><span class="spacer"></span><a href="pages/doctors.html" class="small">All doctors &rarr;</a></div>
+          <div id="docLoad" style="margin-top:14px"></div>
+        </div>
+      </div>
+      <div>
+        <div class="card section">
+          <h3>Bed occupancy</h3>
+          <div id="rings" class="grid-2" style="margin-top:12px"></div>
+          <a href="pages/beds.html" class="small">Open bed map &rarr;</a>
+        </div>
+        <div class="card section">
+          <h3>Quick actions</h3>
+          <div class="row" style="margin-top:10px">
+            <a class="btn secondary sm inline" href="pages/triage.html">Call next case</a>
+            <a class="btn secondary sm inline" href="pages/data-tools.html">Add sample data</a>
+            <a class="btn secondary sm inline" href="pages/ambulances.html">Ambulances</a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="js/api.js"></script>
+<script src="js/nav.js"></script>
+<script>
+requireLogin();
+renderSidebar("index.html");
+document.getElementById("today").textContent = new Date().toLocaleDateString(undefined, { weekday: "long", day: "numeric", month: "long" });
+
+function statCard(cls, ic, id, label) {
+    return `<div class="stat ${cls}"><div class="ico">${icon(ic)}</div><div class="value" id="${id}">0</div><div class="label">${label}</div></div>`;
+}
+
+let firstLoad = true;
+async function load() {
+    const err = document.getElementById("errorMsg"); hideMessage(err);
+    try {
+        const [sumRes, docRes] = await Promise.all([Api.get("/api/reports/summary"), Api.get("/api/doctors").catch(() => ({ doctors: [] }))]);
+        const s = sumRes.summary;
+
+        if (firstLoad) {
+            document.getElementById("stats").innerHTML =
+                statCard("t-blue", "users", "sPatients", "Total patients") +
+                statCard("t-red", "alert", "sWaiting", "Cases waiting") +
+                statCard("t-green", "heart", "sDoctors", "Doctors on duty") +
+                statCard("t-orange", "bed", "sBeds", "Beds free") +
+                statCard("t-red", "activity", "sIcu", "ICU beds free") +
+                statCard("t-green", "truck", "sAmb", "Ambulances free");
+        }
+        const vals = { sPatients: s.total_patients, sWaiting: s.total_emergency_cases_waiting, sDoctors: s.doctors.available,
+                       sBeds: s.beds.available, sIcu: s.icu_beds.available, sAmb: s.ambulances.available };
+        for (const [id, v] of Object.entries(vals)) countUp(document.getElementById(id), v, firstLoad ? 800 : 250);
+        firstLoad = false;
+
+        const pc = s.priority_counts, max = Math.max(1, pc.critical, pc.high, pc.moderate, pc.low);
+        const bar = (cls, label, n) => `<div class="hbar-row"><div class="hbar-label"><span class="badge ${cls}"><span class="dot"></span>${label}</span></div>
+            <div class="hbar-track"><div class="hbar-fill hbar-${cls}" style="width:${n / max * 100}%"></div></div><div class="hbar-value"><strong>${n}</strong> waiting</div></div>`;
+        document.getElementById("priorityBars").innerHTML = bar("critical", "Critical", pc.critical) + bar("high", "High", pc.high) + bar("moderate", "Moderate", pc.moderate) + bar("low", "Low", pc.low);
+
+        const ring = (title, free, occ, color) => {
+            const tot = free + occ, pct = tot ? Math.round(occ / tot * 100) : 0;
+            return `<div class="row" style="gap:12px"><div class="ring" style="--p:${pct};--c:${color}"><span>${pct}%</span></div>
+                <div><strong>${title}</strong><div class="muted small">${occ}/${tot} occupied</div></div></div>`;
+        };
+        const icuTot = s.icu_beds.available + s.icu_beds.occupied;
+        document.getElementById("rings").innerHTML =
+            ring("All beds", s.beds.available, s.beds.occupied, "var(--brand)") +
+            ring("ICU", s.icu_beds.available, s.icu_beds.occupied, icuTot ? "var(--critical)" : "var(--low)");
+
+        const top = (docRes.doctors || []).slice().sort((a, b) => b.current_patients / b.max_patients - a.current_patients / a.max_patients).slice(0, 5);
+        document.getElementById("docLoad").innerHTML = top.length ? top.map(d => {
+            const pct = Math.min(100, Math.round(d.current_patients / d.max_patients * 100));
+            return `<div class="hbar-row"><div class="hbar-label" style="width:170px;color:var(--ink)">${esc(d.name)}<div class="muted small">${esc(d.specialization)}</div></div>
+                <div class="meter ${pct >= 100 ? "full" : pct >= 70 ? "mid" : ""}" style="flex:1"><span style="width:${pct}%"></span></div>
+                <div class="hbar-value" style="width:60px"><strong>${d.current_patients}</strong>/${d.max_patients}</div></div>`;
+        }).join("") : `<div class="empty-state">No doctors yet.</div>`;
+    } catch (e) { document.getElementById("stats").innerHTML = ""; showMessage(err, e.message, "error"); }
+}
+load();
+setInterval(load, 15000);
+</script>
+</body>
+</html>

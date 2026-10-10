@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Hospital Routing - MediPriority</title>
+<link rel="stylesheet" href="../css/styles.css">
+</head>
+<body>
+<div class="app-shell">
+  <div class="sidebar" id="sidebar"></div>
+  <div class="main">
+    <div class="page-header">
+      <h1>Hospital Transfer Routing</h1>
+      <p>Shortest-path routing over a network of <strong>real hospitals from the government directory</strong> using Dijkstra's algorithm in C. Distances between them are approximate road-km, and this is not real-time, medically-optimized, or connected to any live mapping service.</p>
+    </div>
+
+    <div class="section card">
+      <h3>Hospital routing network</h3>
+      <button id="loadHospitalsBtn" class="btn secondary">Load hospitals</button>
+      <div id="hospitalTable" style="margin-top:16px"></div>
+      <div id="hospitalsMsg" class="message"></div>
+    </div>
+
+    <div class="section card">
+      <h3>Find shortest route</h3>
+      <div class="grid-2">
+        <div><label for="fromId">From hospital ID</label><input type="number" id="fromId" required></div>
+        <div><label for="toId">To hospital ID</label><input type="number" id="toId" required></div>
+      </div>
+      <button id="findBtn" class="btn">Find route</button>
+      <div id="routeMsg" class="message"></div>
+      <div id="routeResult" style="margin-top:16px"></div>
+    </div>
+  </div>
+</div>
+
+<script src="../js/api.js"></script>
+<script src="../js/nav.js"></script>
+<script>
+requireLogin();
+renderSidebar("pages/routing.html");
+
+async function loadHospitals() {
+    const table = document.getElementById("hospitalTable");
+    const msg = document.getElementById("hospitalsMsg");
+    hideMessage(msg);
+    try {
+        const res = await Api.get("/api/hospitals");
+        table.innerHTML = `<table><thead><tr><th>ID</th><th>Name</th></tr></thead>
+        <tbody>${res.hospitals.map(h => `<tr><td>${h.hospital_id}</td><td>${h.name}</td></tr>`).join("")}</tbody></table>`;
+    } catch (err) { showMessage(msg, err.message, "error"); }
+}
+
+document.getElementById("loadHospitalsBtn").addEventListener("click", loadHospitals);
+
+document.getElementById("findBtn").addEventListener("click", async () => {
+    const msg = document.getElementById("routeMsg");
+    const result = document.getElementById("routeResult");
+    hideMessage(msg); result.innerHTML = "";
+    const fromId = parseInt(document.getElementById("fromId").value, 10);
+    const toId = parseInt(document.getElementById("toId").value, 10);
+
+    try {
+        const res = await Api.post("/api/routing/shortest-path", { from_hospital_id: fromId, to_hospital_id: toId });
+        result.innerHTML = `
+            <p><strong>Route:</strong> ${res.route.join(" &rarr; ")}</p>
+            <p><strong>Total approx. distance (km):</strong> ${res.total_cost}</p>
+            <p class="note">${res.note}</p>
+        `;
+    } catch (err) {
+        showMessage(msg, err.message, "warning");
+    }
+});
+
+loadHospitals();
+</script>
+</body>
+</html>
