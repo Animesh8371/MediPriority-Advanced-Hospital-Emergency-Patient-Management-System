@@ -1,0 +1,15 @@
+.env
+.env.*
+!.env.example
+build/
+backend/build*/
+cmake-build-*/
+node_modules/
+*.o
+*.obj
+*.a
+*.dll
+*.exe
+*.log
+.DS_Store
+Thumbs.db

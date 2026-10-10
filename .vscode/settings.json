@@ -1,0 +1,37 @@
+{
+    // Point CMake Tools at backend/ -- that's where CMakeLists.txt actually lives,
+    // not the repo root.
+    "cmake.sourceDirectory": "${workspaceFolder}/backend",
+    "cmake.buildDirectory": "${workspaceFolder}/backend/build",
+    // Don't auto-configure on open: this project needs MySQL Connector/C++ and
+    // OpenSSL installed first (see README.md), so an immediate auto-configure
+    // would just fail with a red error banner before you've had a chance to set
+    // up dependencies.
+    "cmake.configureOnOpen": false,
+
+    // Make sure every .h file is treated as the right language so IntelliSense,
+    // error squiggles and syntax highlighting are accurate in both trees:
+    // backend/c is plain C, backend/cpp is C++.
+    "files.associations": {
+        "${workspaceFolder}/backend/c/**/*.h": "c",
+        "${workspaceFolder}/backend/c/**/*.c": "c",
+        "${workspaceFolder}/backend/cpp/**/*.h": "cpp",
+        "${workspaceFolder}/backend/cpp/**/*.cpp": "cpp",
+        "${workspaceFolder}/backend/third_party/*.h": "cpp",
+        "*.tpp": "cpp"
+    },
+
+    "C_Cpp.default.cStandard": "c11",
+    "C_Cpp.default.cppStandard": "c++17",
+    "C_Cpp.errorSquiggles": "enabled",
+
+    "files.exclude": {
+        "**/build": false
+    },
+    "search.exclude": {
+        "**/backend/build": true
+    },
+
+    "editor.tabSize": 4,
+    "editor.rulers": [100]
+}
