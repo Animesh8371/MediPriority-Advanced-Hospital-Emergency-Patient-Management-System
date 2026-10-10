@@ -1,0 +1,10 @@
+{
+    "recommendations": [
+        "ms-vscode.cpptools",
+        "ms-vscode.cmake-tools",
+        "ms-vscode.cpptools-extension-pack",
+        "mtxr.sqltools",
+        "mtxr.sqltools-driver-mysql",
+        "ritwickdey.liveserver"
+    ]
+}
